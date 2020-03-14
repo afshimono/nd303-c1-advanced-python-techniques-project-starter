@@ -1,6 +1,6 @@
-from collections import namedtuple
+from collections import namedtuple, defaultdict
 from enum import Enum
-
+from datetime import datetime
 from exceptions import UnsupportedFeature
 from models import NearEarthObject, OrbitPath
 
@@ -35,6 +35,12 @@ class Query(object):
         :param kwargs: dict of search query parameters to determine which SearchOperation query to use
         """
         # TODO: What instance variables will be useful for storing on the Query object?
+        self.date = kwargs.get('date',None)
+        self.start_date = kwargs.get('start_date',None)
+        self.end_date = kwargs.get('end_date',None)
+        self.number = kwargs.get('number',None)
+        self.return_object = kwargs.get('return_object',None)
+        self.filter = kwargs.get('filter',None)
 
     def build_query(self):
         """
@@ -45,7 +51,13 @@ class Query(object):
         """
 
         # TODO: Translate the query parameters into a QueryBuild.Selectors object
-
+        if self.date:
+            this_date_search = DateSearch(type=DateSearch.equals, values=self.date)
+        elif self.start_date and self.end_date:
+            this_date_search = DateSearch(type=DateSearch.between, values=[self.start_date, self.end_date])
+        
+        result = Query.Selectors(number=self.number, return_object=self.return_object, date_search=this_date_search, filters=self.filter)
+        return result
 
 class Filter(object):
     """
@@ -54,10 +66,16 @@ class Filter(object):
     """
     Options = {
         # TODO: Create a dict of filter name to the NearEarthObject or OrbitalPath property
+        "diameter":["diameter_min_km", "diameter_max_km"],
+        "is_hazardous": "is_potentially_hazardous_asteroid",
+        "distance": "miss_distance_kilometers"
     }
 
     Operators = {
         # TODO: Create a dict of operator symbol to an Operators method, see README Task 3 for hint
+        "=":"get_equals",
+        ">":"get_gt",
+        "<":"get_sm"
     }
 
     def __init__(self, field, object, operation, value):
@@ -73,7 +91,7 @@ class Filter(object):
         self.value = value
 
     @staticmethod
-    def create_filter_options(filter_options):
+    def create_filter_options(filter_options, object):
         """
         Class function that transforms filter options raw input into filters
 
@@ -82,6 +100,11 @@ class Filter(object):
         """
 
         # TODO: return a defaultdict of filters with key of NearEarthObject or OrbitPath and value of empty list or list of Filters
+        result = defaultdict(list)
+        for filter_item in filter_options:
+            filter_item_list = filter_item.split(":")
+            result[object] = Filter(filter_item_list[0],object,filter_item_list[1],filter_item_list[2])
+        return result
 
     def apply(self, results):
         """
@@ -122,3 +145,23 @@ class NEOSearcher(object):
         # TODO: Write instance methods that get_objects can use to implement the two types of DateSearch your project
         # TODO: needs to support that then your filters can be applied to. Remember to return the number specified in
         # TODO: the Query.Selectors as well as in the return_type from Query.Selectors
+        if type(query.date_search) == type(list):
+            pass
+        else:
+            candidate_list = self.date_equals(db.orbit_dict)
+
+
+    def date_equals(self, date: str, return_type: str, orbit_dict: dict):
+        result = []
+        base_date = datetime.strptime(date, "%Y-%m-%d")
+        for key in orbit_dict.keys():
+            this_date = datetime.strptime(key, "%Y-%b-%d %H:%M").replace(hour=0, minute=0)
+            if base_date == this_date:
+                result.append(orbit_dict[key].values())
+        if return_type == "Path":
+            return result
+        else:
+            neo_set = set()
+            [neo_set.union(x.neo_set) for x in result]
+            return [self.db.neo_dict[x] for x in neo_set]
+             
