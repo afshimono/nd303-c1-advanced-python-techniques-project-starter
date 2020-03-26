@@ -3,6 +3,7 @@ from enum import Enum
 from datetime import datetime
 from exceptions import UnsupportedFeature
 from models import NearEarthObject, OrbitPath
+from functools import reduce
 
 
 class DateSearch(Enum):
@@ -52,9 +53,9 @@ class Query(object):
 
         # TODO: Translate the query parameters into a QueryBuild.Selectors object
         if self.date:
-            this_date_search = DateSearch(type=DateSearch.equals, values=self.date)
+            this_date_search = self.DateSearch(type=DateSearch.equals, values=self.date)
         elif self.start_date and self.end_date:
-            this_date_search = DateSearch(type=DateSearch.between, values=[self.start_date, self.end_date])
+            this_date_search = self.DateSearch(type=DateSearch.between, values=[self.start_date, self.end_date])
         
         result = Query.Selectors(number=self.number, return_object=self.return_object, date_search=this_date_search, filters=self.filter)
         return result
@@ -145,23 +146,49 @@ class NEOSearcher(object):
         # TODO: Write instance methods that get_objects can use to implement the two types of DateSearch your project
         # TODO: needs to support that then your filters can be applied to. Remember to return the number specified in
         # TODO: the Query.Selectors as well as in the return_type from Query.Selectors
-        if type(query.date_search) == type(list):
-            pass
-        else:
-            candidate_list = self.date_equals(db.orbit_dict)
+        if query.date_search.type == DateSearch.between:
+            candidate_list = self.date_between(query.date_search.values, query.return_object, self.db.orbit_dict)
+        elif query.date_search.type == DateSearch.equals:
+            candidate_list = self.date_equals(query.date_search.values, query.return_object, self.db.orbit_dict)
+        return candidate_list[:query.number]
 
 
     def date_equals(self, date: str, return_type: str, orbit_dict: dict):
         result = []
         base_date = datetime.strptime(date, "%Y-%m-%d")
         for key in orbit_dict.keys():
-            this_date = datetime.strptime(key, "%Y-%b-%d %H:%M").replace(hour=0, minute=0)
+            try:
+                this_date = datetime.strptime(key, "%Y-%b-%d %H:%M").replace(hour=0, minute=0)
+            except:
+                print(f"Failed to load {key}")
+                continue
             if base_date == this_date:
-                result.append(orbit_dict[key].values())
+                result.append(orbit_dict[key])
         if return_type == "Path":
             return result
         else:
             neo_set = set()
-            [neo_set.union(x.neo_set) for x in result]
+            neo_set = [x.neo_set for neo_list in result for x in neo_list.values()]
+            neo_set = reduce(lambda x,y: x.union(y), neo_set)
+            return [self.db.neo_dict[x] for x in neo_set]
+
+    def date_between(self, date: list, return_type: str, orbit_dict: dict):
+        result = []
+        start_date = datetime.strptime(date[0], "%Y-%m-%d")
+        end_date = datetime.strptime(date[1], "%Y-%m-%d")
+        for key in orbit_dict.keys():
+            try:
+                this_date = datetime.strptime(key, "%Y-%b-%d %H:%M").replace(hour=0, minute=0)
+            except:
+                print(f"Failed to load {key}")
+                continue
+            if this_date >= start_date and this_date <= end_date:
+                result.append(orbit_dict[key])
+        if return_type == "Path":
+            return result
+        else:
+            neo_set = set()
+            neo_set = [x.neo_set for neo_list in result for x in neo_list.values()]
+            neo_set = reduce(lambda x,y: x.union(y), neo_set)
             return [self.db.neo_dict[x] for x in neo_set]
              
