@@ -53,11 +53,11 @@ class OrbitPath(object):
         """
         # TODO: What instance variables will be useful for storing on the Near Earth Object?
         self.neo_set = set()
-        self.close_approach_date = None
-        self.close_approach_date_full = None
-        self.miss_distance_kilometers = None
-        self.orbiting_body = None
-        self.kilometers_per_second = None
+        self.close_approach_date = kwargs.get('close_approach_date')
+        self.close_approach_date_full = kwargs.get('close_approach_date_full')
+        self.miss_distance_kilometers = kwargs.get('miss_distance_kilometers')
+        self.orbiting_body = kwargs.get('orbiting_body')
+        self.kilometers_per_second = kwargs.get('kilometers_per_second')
 
     def update_neos(self, id: str):
         """

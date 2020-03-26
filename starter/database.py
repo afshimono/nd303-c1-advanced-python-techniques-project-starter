@@ -51,4 +51,3 @@ class NEODatabase(object):
             if item['id'] not in self.neo_dict:
                 self.neo_dict[item['id']] = NearEarthObject(**item)
             self.neo_dict[item['id']].update_orbits(current_orbit)
-        return None
