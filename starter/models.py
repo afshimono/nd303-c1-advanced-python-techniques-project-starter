@@ -31,7 +31,7 @@ class NearEarthObject(object):
 
         # TODO: How do we connect orbits back to the Near Earth Object?
         self.orbit_set.add(orbit)
-        orbit.update_neos(self.id)
+        orbit.update_neos(self)
 
     def get_orbits(self):
         '''
@@ -59,9 +59,9 @@ class OrbitPath(object):
         self.orbiting_body = kwargs.get('orbiting_body')
         self.kilometers_per_second = kwargs.get('kilometers_per_second')
 
-    def update_neos(self, id: str):
+    def update_neos(self, neo_obj: NearEarthObject):
         """
         Adds the id to the set of NEO Ids
         """
-        self.neo_set.add(id)
+        self.neo_set.add(neo_obj)
 

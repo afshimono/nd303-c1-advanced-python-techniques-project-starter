@@ -155,14 +155,12 @@ class TestNEOSearchUseCases(unittest.TestCase):
         # Filter to NEO Orbit Paths with Matching Distance
         all_orbits = []
         for neo in neo_ids:
-            all_orbits += neo.orbits
-        unique_orbits = set()
+            all_orbits.extend(list(neo.orbit_set))
+        unique_orbits = set(all_orbits)
         filtered_orbits = []
-        for orbit in all_orbits:
-            date_name = f'{orbit.close_approach_date}.{orbit.neo_name}'
-            if date_name not in unique_orbits:
-                if orbit.miss_distance_kilometers > 234989.0:
-                    filtered_orbits.append(orbit)
+        for orbit in unique_orbits:
+            if orbit.miss_distance_kilometers > 234989.0:
+                filtered_orbits.append(orbit)
 
         # Grab the requested number
         orbits = filtered_orbits[0:10]
