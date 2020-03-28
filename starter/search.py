@@ -55,9 +55,11 @@ class Query(object):
         if self.date:
             this_date_search = self.DateSearch(type=DateSearch.equals, values=self.date)
         elif self.start_date and self.end_date:
-            this_date_search = self.DateSearch(type=DateSearch.between, values=[self.start_date, self.end_date])
-        
-        result = Query.Selectors(number=self.number, return_object=self.return_object, date_search=this_date_search, filters=self.filter)
+            this_date_search = self.DateSearch(type=DateSearch.between, values=[self.start_date, self.end_date]) 
+        result = Query.Selectors(number=self.number, \
+                return_object=self.return_object, \
+                date_search=this_date_search, \
+                filters=Filter.create_filter_options(self.filter, self.return_object))
         return result
 
 class Filter(object):
@@ -74,9 +76,9 @@ class Filter(object):
 
     Operators = {
         # TODO: Create a dict of operator symbol to an Operators method, see README Task 3 for hint
-        "=":"get_equals",
-        ">":"get_gt",
-        "<":"get_sm"
+        "=":"is_equal",
+        ">":"is_gt",
+        "<":"is_sm"
     }
 
     def __init__(self, field, object, operation, value):
@@ -102,9 +104,11 @@ class Filter(object):
 
         # TODO: return a defaultdict of filters with key of NearEarthObject or OrbitPath and value of empty list or list of Filters
         result = defaultdict(list)
-        for filter_item in filter_options:
-            filter_item_list = filter_item.split(":")
-            result[object] = Filter(filter_item_list[0],object,filter_item_list[1],filter_item_list[2])
+        result[object] = []
+        if filter_options:
+            for filter_item in filter_options:
+                filter_item_list = filter_item.split(":")
+                result[object].append(Filter(filter_item_list[0],object,filter_item_list[1],filter_item_list[2]))
         return result
 
     def apply(self, results):
@@ -115,6 +119,45 @@ class Filter(object):
         :return: filtered list of Near Earth Object results
         """
         # TODO: Takes a list of NearEarthObjects and applies the value of its filter operation to the results
+        result = []
+        for item in results:        #handle wrong type
+            failed_bool = False
+            if not isinstance(item, NearEarthObject):
+                if self.field == "distance":
+                    dist_function = getattr(self, Filter.Operators[self.operation])
+                    failed_bool = not dist_function(item, Filter.Options["distance"], float(self.value))
+                else:
+                    for neo_item in item.neo_set:
+                        if self.field == "is_hazardous":
+                            if self.operation == '=':
+                                if str(getattr(neo_item, Filter.Options[self.field])) != self.value:
+                                    failed_bool = True
+                        elif self.field == "diameter":
+                            dist_function = getattr(self, Filter.Operators[self.operation])
+                            if self.operation == ">":
+                                if not (dist_function(neo_item, Filter.Options["diameter"][0], float(self.value))):
+                                    failed_bool = True
+                            elif self.operation == "<":
+                                if not (dist_function(neo_item, Filter.Options["diameter"][1], float(self.value))):
+                                    failed_bool = True
+                            elif self.operation == "=":
+                                if not ( self.is_gt(neo_item, Filter.Options["diameter"][1], float(self.value)) and\
+                                        self.is_sm(neo_item, Filter.Options["diameter"][0], float(self.value))):
+                                    failed_bool = True
+            if not failed_bool:
+                result.append(item)
+        return result
+
+    def is_equal(self, item: object, field:str, value: str):
+        return getattr(item, field) == value
+
+    def is_gt(self, item: object, field:str, value: str):
+        return getattr(item, field) > value
+
+    def is_sm(self, item: object, field:str, value: str):
+        return getattr(item, field) < value
+                
+
 
 
 class NEOSearcher(object):
@@ -147,32 +190,37 @@ class NEOSearcher(object):
         # TODO: needs to support that then your filters can be applied to. Remember to return the number specified in
         # TODO: the Query.Selectors as well as in the return_type from Query.Selectors
         if query.date_search.type == DateSearch.between:
-            candidate_list = self.date_between(query.date_search.values, query.return_object, self.db.orbit_dict)
+            candidate_list = self.__date_between(query.date_search.values, self.db.orbit_dict)
         elif query.date_search.type == DateSearch.equals:
-            candidate_list = self.date_equals(query.date_search.values, query.return_object, self.db.orbit_dict)
+            candidate_list = self.__date_equals(query.date_search.values, self.db.orbit_dict)
+        if query.filters:
+            for neo_id, filter_list in query.filters.items():
+                for filter_item in filter_list:
+                    candidate_list = filter_item.apply(candidate_list)
+        if query.return_object == 'NEO':
+            candidate_list = self.__convert_to_neo(candidate_list)
         return candidate_list[:query.number]
 
 
-    def date_equals(self, date: str, return_type: str, orbit_dict: dict):
+    def __date_equals(self, date: str, orbit_dict: dict):
         result = []
         base_date = datetime.strptime(date, "%Y-%m-%d")
         for key in orbit_dict.keys():
             try:
                 this_date = datetime.strptime(key, "%Y-%b-%d %H:%M").replace(hour=0, minute=0)
             except:
-                print(f"Failed to load {key}")
+                #print(f"Failed to load {key}")
                 continue
             if base_date == this_date:
                 result.append(orbit_dict[key])
-        if return_type == "Path":
-            return result
-        else:
-            neo_set = set()
-            neo_set = [x.neo_set for neo_list in result for x in neo_list.values()]
-            neo_set = reduce(lambda x,y: x.union(y), neo_set)
-            return [self.db.neo_dict[x] for x in neo_set]
+        path_list =[{x} for path_list in result for x in path_list.values()]
+        result_set = set()
+        result_set = reduce(lambda x,y: x.union(y),
+            path_list)
+        return list(result_set)
 
-    def date_between(self, date: list, return_type: str, orbit_dict: dict):
+
+    def __date_between(self, date: list, orbit_dict: dict):
         result = []
         start_date = datetime.strptime(date[0], "%Y-%m-%d")
         end_date = datetime.strptime(date[1], "%Y-%m-%d")
@@ -180,15 +228,20 @@ class NEOSearcher(object):
             try:
                 this_date = datetime.strptime(key, "%Y-%b-%d %H:%M").replace(hour=0, minute=0)
             except:
-                print(f"Failed to load {key}")
+                #print(f"Failed to load {key}")
                 continue
             if this_date >= start_date and this_date <= end_date:
                 result.append(orbit_dict[key])
-        if return_type == "Path":
-            return result
-        else:
-            neo_set = set()
-            neo_set = [x.neo_set for neo_list in result for x in neo_list.values()]
+        path_list =[{x} for path_list in result for x in path_list.values()]
+        result_set = set()
+        result_set = reduce(lambda x,y: x.union(y),
+            path_list)
+        return list(result_set)
+        
+
+    def __convert_to_neo(self, orb_list: list):
+        neo_set = [x.neo_set for x in orb_list]
+        if len(neo_set) > 1:
             neo_set = reduce(lambda x,y: x.union(y), neo_set)
-            return [self.db.neo_dict[x] for x in neo_set]
+        return list(neo_set)
              
